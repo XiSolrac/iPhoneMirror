@@ -175,7 +175,8 @@ function Get-AppProcessPaths {
 
 function Get-ProcessesUnder([string]$Directory, $AppProcesses = (Get-AppProcessPaths)) {
     $prefix = $Directory.TrimEnd('\') + '\'
-    @($AppProcesses | Where-Object { $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) } |
+    # With no app running the list arrives as $null, which a pipeline still passes on once.
+    @($AppProcesses | Where-Object { $_ -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) } |
         ForEach-Object { $_.Process })
 }
 
