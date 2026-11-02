@@ -66,6 +66,12 @@
           Link="Controls\ModernControls.xaml" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- NuGetPackageRoot lacks its trailing slash when NuGet.Config sets
+         globalPackagesFolder without one; the licenses would then go missing. -->
+    <WpfUiPackageDirectory>$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))wpf-ui\4.3.0\</WpfUiPackageDirectory>
+  </PropertyGroup>
+
   <ItemGroup>
     <Resource Include="..\App\Assets\iPhoneMirror.ico">
       <Link>Assets\iPhoneMirror.ico</Link>
@@ -80,15 +86,15 @@
                       LogicalName="DriverCleanup.Script.ps1" />
     <EmbeddedResource Include="Services\DriverElevation.Bootstrap.ps1"
                       LogicalName="DriverElevation.Bootstrap.ps1" />
-    <Content Include="$(NuGetPackageRoot)wpf-ui\4.3.0\LICENSE.md"
-             Condition="Exists('$(NuGetPackageRoot)wpf-ui\4.3.0\LICENSE.md')">
+    <Content Include="$(WpfUiPackageDirectory)LICENSE.md"
+             Condition="Exists('$(WpfUiPackageDirectory)LICENSE.md')">
       <Link>licenses\WPF-UI-LICENSE.md</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </Content>
-    <Content Include="$(NuGetPackageRoot)wpf-ui\4.3.0\ThirdPartyNotices.txt"
-             Condition="Exists('$(NuGetPackageRoot)wpf-ui\4.3.0\ThirdPartyNotices.txt')">
+    <Content Include="$(WpfUiPackageDirectory)ThirdPartyNotices.txt"
+             Condition="Exists('$(WpfUiPackageDirectory)ThirdPartyNotices.txt')">
       <Link>licenses\WPF-UI-ThirdPartyNotices.txt</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
