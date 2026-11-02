@@ -1098,9 +1098,14 @@ function Start-SelectedVersion {
         $answer = Show-Message "iPhoneMirror läuft bereits (nur eine Instanz möglich):`n$where`n`nLaufende Instanz beenden und '$($branch.Name)' starten?" 'Question' 'YesNo'
         if ($answer -ne 'Yes') { return }
         foreach ($process in $running) { [void]$process.CloseMainWindow() }
+        # Helpers such as the wireless host live in the build folder too and
+        # exit a moment after the app; a swap waits for them, so the launch does.
+        $helpers = @(Get-ProcessesUnder (Split-Path -Parent $exe) |
+            Where-Object { $running.Id -notcontains $_.Id })
         # Waiting for the exit here froze the window for up to 10 s per
-        # instance; the timer checks on every tick instead.
-        $State.Launch = @{ Branch = $branch; Processes = $running; Until = (Get-Date).AddSeconds(10); Killed = $false }
+        # instance; the timer checks on every tick instead. Stopping a USB
+        # session alone can take over ten seconds.
+        $State.Launch = @{ Branch = $branch; Processes = @($running) + $helpers; Until = (Get-Date).AddSeconds(20); Killed = $false }
         $startButton.Enabled = $false
         $status.Text = 'Warte, bis sich die laufende Instanz beendet ...'
         return
@@ -1133,7 +1138,16 @@ function Invoke-LaunchTick {
 }
 
 function Start-Version($Branch) {
-    try { [void](Complete-Staging $Branch.Name) } catch { }
+    $swapped = try { Complete-Staging $Branch.Name } catch { $false }
+    if (-not $swapped) {
+        # Starting quietly would run the old copy while a new build waits.
+        $answer = Show-Message "Der neue Build von '$($Branch.Name)' konnte nicht übernommen werden (Dateien noch in Benutzung).`n`nTrotzdem die bisherige Version starten?" 'Warning' 'YesNo'
+        if ($answer -ne 'Yes') {
+            $startButton.Enabled = $true
+            $status.Text = 'Nicht gestartet: neuer Build wartet noch. Erneut Starten versuchen.'
+            return
+        }
+    }
     $exe = Get-CurrentExe $Branch.Name
     Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe)
     $State.Config.LastBranch = $Branch.Name
