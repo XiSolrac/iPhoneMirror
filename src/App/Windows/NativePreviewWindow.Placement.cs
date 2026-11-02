@@ -35,6 +35,9 @@ internal sealed partial class NativePreviewWindow
     // Where the pointer grabbed the window, to follow it past the top edge.
     private HoverPoint _sizeMoveCursor;
     private bool _sizeMoveCursorKnown;
+    // Where the pointer last put a moved window; Windows still pulls the
+    // top back onto the screen when the button is released.
+    private WindowRect? _moveFollowTarget;
 
     /// <summary>Raised after a move or resize, a pin change and before the window closes.</summary>
     internal event Action<PreviewPlacement>? PlacementChanged;
@@ -78,6 +81,13 @@ internal sealed partial class NativePreviewWindow
             return;
         }
         if (message != WmExitSizeMove) return;
+        // Windows puts a window released above the screen back down; keep it
+        // where the pointer left it.
+        if (_moveFollowTarget is { } target && GetWindowRect(_handle, out var released) &&
+            (released.Left != target.Left || released.Top != target.Top))
+            _ = SetWindowPos(_handle, 0, target.Left, target.Top, 0, 0,
+                SwpNoSize | SwpNoZOrder | SwpNoActivate);
+        _moveFollowTarget = null;
         // Only a move snaps; a resize keeps the edge where the user left it.
         if (_sizeMoveActive && SnapToEdgesEnabled?.Invoke() != false &&
             GetWindowRect(_handle, out var end) &&
@@ -105,6 +115,7 @@ internal sealed partial class NativePreviewWindow
         rect.Right = rect.Left + width;
         rect.Bottom = rect.Top + height;
         Marshal.StructureToPtr(rect, lParam, false);
+        _moveFollowTarget = rect;
         return true;
     }
 
