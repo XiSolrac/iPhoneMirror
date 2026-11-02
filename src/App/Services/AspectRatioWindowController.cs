@@ -19,6 +19,9 @@ internal sealed class AspectRatioWindowController : IDisposable
     private const uint SwpNoZOrder = 0x0004;
     private const double InitialWorkAreaFraction = 0.82;
     private const double ChangedWorkAreaFraction = 0.92;
+    // How many work areas a preview may span when it may hang past the edges;
+    // large enough to blow up a phone, small enough to stay manageable.
+    private const double BeyondWorkAreaFactor = 3.0;
 
     private readonly Window? _window;
     private readonly Dispatcher _dispatcher;
@@ -29,6 +32,7 @@ internal sealed class AspectRatioWindowController : IDisposable
     // vertically (preview frame). The video, not the client, keeps the source
     // aspect ratio.
     private readonly Func<(int Horizontal, int Vertical)>? _contentInset;
+    private readonly Func<bool>? _allowBeyondWorkArea;
     private HwndSource? _source;
     private nint _handle;
     private double _aspectRatio;
@@ -55,11 +59,13 @@ internal sealed class AspectRatioWindowController : IDisposable
     /// </summary>
     internal AspectRatioWindowController(HwndSource source, uint sourceWidth, uint sourceHeight,
         Func<bool> canResize, double minWidthDips = 320, double minHeightDips = 240,
-        Func<(int Horizontal, int Vertical)>? contentInset = null)
+        Func<(int Horizontal, int Vertical)>? contentInset = null,
+        Func<bool>? allowBeyondWorkArea = null)
     {
         _dispatcher = source.Dispatcher;
         _canResize = canResize;
         _contentInset = contentInset;
+        _allowBeyondWorkArea = allowBeyondWorkArea;
         _minWidthDips = minWidthDips;
         _minHeightDips = minHeightDips;
         _aspectRatio = ValidAspect(sourceWidth, sourceHeight) ?? (201.0 / 437.0);
@@ -82,6 +88,66 @@ internal sealed class AspectRatioWindowController : IDisposable
     }
 
     internal void Reflow() => QueueResize(fitToWorkArea: false);
+
+    private bool AllowsBeyondWorkArea => _allowBeyondWorkArea?.Invoke() == true;
+
+    // The share of the work area the client may fill: the given fraction, or
+    // several screens when the preview may hang past the edges.
+    private double WorkAreaLimit(double fraction) =>
+        AllowsBeyondWorkArea ? BeyondWorkAreaFactor : fraction;
+
+    // Keeps a window inside the work area, or, when it may hang past the
+    // edges, keeps at least a quarter of it on the screen so it stays reachable.
+    private int PlaceAxis(int start, int size, int min, int max)
+    {
+        if (!AllowsBeyondWorkArea) return Math.Clamp(start, min, Math.Max(min, max - size));
+        var keep = Math.Max(1, Math.Min(size, max - min) / 4);
+        return Math.Clamp(start, min - size + keep, Math.Max(min - size + keep, max - keep));
+    }
+
+    /// <summary>
+    /// Grows or shrinks the window by <paramref name="factor"/> around a screen
+    /// point, so the content under the pointer stays under it.
+    /// </summary>
+    internal bool ScaleAround(double factor, int anchorX, int anchorY)
+    {
+        if (_disposed || _handle == 0 || !_canResize() || factor <= 0 ||
+            !GetWindowRect(_handle, out var current) || !TryGetWorkArea(out var workArea)) return false;
+
+        GetFrameSize(out var frameWidth, out var frameHeight);
+        var workWidth = Math.Max(1, workArea.Right - workArea.Left);
+        var workHeight = Math.Max(1, workArea.Bottom - workArea.Top);
+        var clientWidth = Math.Max(1.0, current.Right - current.Left - frameWidth) * factor;
+        var clientHeight = clientWidth / _aspectRatio;
+
+        var dpi = GetDpiForWindow(_handle);
+        var dpiScale = dpi == 0 ? 1.0 : dpi / 96.0;
+        var minClientWidth = Math.Max(1.0, _minWidthDips * dpiScale - frameWidth);
+        var minClientHeight = Math.Max(1.0, _minHeightDips * dpiScale - frameHeight);
+        var limit = WorkAreaLimit(1.0);
+        var minimumScale = Math.Max(minClientWidth / clientWidth, minClientHeight / clientHeight);
+        var maximumScale = Math.Min(
+            (workWidth * limit - frameWidth) / clientWidth,
+            (workHeight * limit - frameHeight) / clientHeight);
+        var uniformScale = Math.Min(Math.Max(1.0, minimumScale), Math.Max(minimumScale, maximumScale));
+        clientWidth *= uniformScale;
+        clientHeight *= uniformScale;
+
+        var currentWidth = Math.Max(1, current.Right - current.Left);
+        var currentHeight = Math.Max(1, current.Bottom - current.Top);
+        var targetWidth = Math.Max(1, (int)Math.Round(clientWidth) + frameWidth);
+        var targetHeight = Math.Max(1, (int)Math.Round(clientHeight) + frameHeight);
+        if (targetWidth == currentWidth && targetHeight == currentHeight) return false;
+        var anchorFractionX = Math.Clamp((anchorX - current.Left) / (double)currentWidth, 0, 1);
+        var anchorFractionY = Math.Clamp((anchorY - current.Top) / (double)currentHeight, 0, 1);
+        var left = PlaceAxis((int)Math.Round(anchorX - anchorFractionX * targetWidth),
+            targetWidth, workArea.Left, workArea.Right);
+        var top = PlaceAxis((int)Math.Round(anchorY - anchorFractionY * targetHeight),
+            targetHeight, workArea.Top, workArea.Bottom);
+
+        return SetWindowPos(_handle, 0, left, top, targetWidth, targetHeight,
+            SwpNoActivate | SwpNoZOrder);
+    }
 
     private static double? ValidAspect(uint width, uint height)
     {
@@ -165,8 +231,8 @@ internal sealed class AspectRatioWindowController : IDisposable
             clientWidth = clientHeight * _aspectRatio;
 
             var scaleDown = Math.Min(1.0, Math.Min(
-                workWidth * ChangedWorkAreaFraction / clientWidth,
-                workHeight * ChangedWorkAreaFraction / clientHeight));
+                workWidth * WorkAreaLimit(ChangedWorkAreaFraction) / clientWidth,
+                workHeight * WorkAreaLimit(ChangedWorkAreaFraction) / clientHeight));
             clientWidth *= scaleDown;
             clientHeight *= scaleDown;
         }
@@ -178,8 +244,8 @@ internal sealed class AspectRatioWindowController : IDisposable
 
         var minimumScale = Math.Max(minClientWidth / clientWidth, minClientHeight / clientHeight);
         var maximumScale = Math.Min(
-            workWidth * ChangedWorkAreaFraction / clientWidth,
-            workHeight * ChangedWorkAreaFraction / clientHeight);
+            workWidth * WorkAreaLimit(ChangedWorkAreaFraction) / clientWidth,
+            workHeight * WorkAreaLimit(ChangedWorkAreaFraction) / clientHeight);
         var uniformScale = Math.Min(Math.Max(1.0, minimumScale), maximumScale);
         clientWidth *= uniformScale;
         clientHeight *= uniformScale;
@@ -192,10 +258,8 @@ internal sealed class AspectRatioWindowController : IDisposable
         var centerY = fitToWorkArea
             ? (workArea.Top + workArea.Bottom) / 2
             : (current.Top + current.Bottom) / 2;
-        var left = Math.Clamp(centerX - targetWidth / 2,
-            workArea.Left, Math.Max(workArea.Left, workArea.Right - targetWidth));
-        var top = Math.Clamp(centerY - targetHeight / 2,
-            workArea.Top, Math.Max(workArea.Top, workArea.Bottom - targetHeight));
+        var left = PlaceAxis(centerX - targetWidth / 2, targetWidth, workArea.Left, workArea.Right);
+        var top = PlaceAxis(centerY - targetHeight / 2, targetHeight, workArea.Top, workArea.Bottom);
 
         return SetWindowPos(_handle, 0, left, top, targetWidth, targetHeight,
             SwpNoActivate | SwpNoZOrder);
@@ -216,6 +280,15 @@ internal sealed class AspectRatioWindowController : IDisposable
                 X = Math.Max(1, (int)Math.Ceiling(_minWidthDips * scale)),
                 Y = Math.Max(1, (int)Math.Ceiling(_minHeightDips * scale)),
             };
+            // Windows otherwise stops a resize at about the desktop's size.
+            if (AllowsBeyondWorkArea && TryGetWorkArea(out var workArea))
+                limits.MaxTrackSize = new NativePoint
+                {
+                    X = Math.Max(limits.MaxTrackSize.X,
+                        (int)((workArea.Right - workArea.Left) * BeyondWorkAreaFactor)),
+                    Y = Math.Max(limits.MaxTrackSize.Y,
+                        (int)((workArea.Bottom - workArea.Top) * BeyondWorkAreaFactor)),
+                };
             Marshal.StructureToPtr(limits, lParam, false);
             handled = true;
             return 0;
@@ -247,16 +320,18 @@ internal sealed class AspectRatioWindowController : IDisposable
         // horizontal edge could therefore keep increasing the width after the
         // proportional height had already grown beyond the monitor. Derive a
         // ratio-compatible maximum from the current work area so the dragged
-        // dimension stops when either screen axis is exhausted.
+        // dimension stops when either screen axis is exhausted. A preview that
+        // may hang past the edges gets several screens instead.
         var minAspectWidth = Math.Max(minClientWidth, minClientHeight * _aspectRatio);
         var minAspectHeight = minAspectWidth / _aspectRatio;
         var maxAspectWidth = double.PositiveInfinity;
         if (TryGetWorkArea(out var workArea))
         {
+            var limit = WorkAreaLimit(1.0);
             var maxClientWidth = Math.Max(1.0,
-                workArea.Right - workArea.Left - frameWidth);
+                (workArea.Right - workArea.Left) * limit - frameWidth);
             var maxClientHeight = Math.Max(1.0,
-                workArea.Bottom - workArea.Top - frameHeight);
+                (workArea.Bottom - workArea.Top) * limit - frameHeight);
             maxAspectWidth = Math.Max(minAspectWidth,
                 Math.Min(maxClientWidth, maxClientHeight * _aspectRatio));
         }

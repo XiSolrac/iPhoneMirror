@@ -69,6 +69,8 @@ internal sealed partial class NativePreviewWindow : IDisposable
     private const int VkShift = 0x10;
     private const int VkControl = 0x11;
     private const int VkMenu = 0x12;
+    // Size change per wheel notch with Alt held.
+    private const double WheelScaleStep = 1.1;
     private const int HtClient = 1;
     private const int HtCaption = 2;
     private const int GwlStyle = -16;
@@ -397,7 +399,8 @@ internal sealed partial class NativePreviewWindow : IDisposable
             () => !_disposed && !_isFullScreen && _handle != 0 &&
                 !IsIconic(_handle) && !IsZoomed(_handle),
             minWidthDips: 96, minHeightDips: 96,
-            contentInset: () => (_frameInsets.Horizontal, _frameInsets.Vertical));
+            contentInset: () => (_frameInsets.Horizontal, _frameInsets.Vertical),
+            allowBeyondWorkArea: () => BeyondScreenEnabled?.Invoke() == true);
         // Install the instance hook only after every callback dependency is
         // initialized; HwndSource construction itself dispatches messages.
         _source.AddHook(WindowProcedure);
@@ -866,6 +869,10 @@ internal sealed partial class NativePreviewWindow : IDisposable
         }
         switch (message)
         {
+            case WmMouseWheel when IsResizeWheelModifierPressed():
+                ScaleWithWheel(unchecked((short)(wParam.ToInt64() >> 16)), lParam);
+                handled = true;
+                return 0;
             case WmMouseMove when IsPointerInputActive:
                 lParam = DrainQueuedMouseMoves(hwnd, lParam);
                 DispatchPointer(PreviewPointerKind.Move, lParam, 0, 0);
@@ -1332,6 +1339,23 @@ internal sealed partial class NativePreviewWindow : IDisposable
 
 
     private static bool IsKeyDown(int virtualKey) => GetKeyState(virtualKey) < 0;
+
+    // Alt+wheel resizes the window; Ctrl+wheel stays the phone's pinch zoom.
+    // The keyboard hook can swallow Alt while typing goes to the phone, so the
+    // owner's own modifier state counts too.
+    private bool IsResizeWheelModifierPressed() =>
+        !_isFullScreen && !_isFixed &&
+        !IsKeyDown(VkControl) && (IsKeyDown(VkMenu) || ResizeModifierPressed?.Invoke() == true);
+
+    private void ScaleWithWheel(short delta, nint lParam)
+    {
+        if (delta == 0) return;
+        // WM_MOUSEWHEEL carries the pointer in screen coordinates.
+        var x = unchecked((short)(lParam.ToInt64() & 0xFFFF));
+        var y = unchecked((short)((lParam.ToInt64() >> 16) & 0xFFFF));
+        var factor = Math.Pow(WheelScaleStep, delta / 120.0);
+        if (_aspectController.ScaleAround(factor, x, y)) PublishPlacement();
+    }
 
     private void HideSystemCursor()
     {

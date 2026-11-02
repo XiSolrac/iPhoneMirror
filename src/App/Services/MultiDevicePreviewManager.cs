@@ -34,6 +34,8 @@ internal sealed class MultiDevicePreviewManager : IDisposable
     internal event Action<string, string[]>? FilesDropped;
     /// <summary>Behind the controls drawn over each preview window.</summary>
     internal IPreviewOverlayActions? OverlayActions { get; set; }
+    /// <summary>Whether Alt is held as the keyboard router sees it, for Alt+wheel resizing.</summary>
+    internal Func<bool>? ResizeModifierPressed { get; set; }
     // A device preview window was created and shown (device UDID, window).
     internal event Action<string, nint>? PreviewOpened;
 
@@ -248,6 +250,8 @@ internal sealed class MultiDevicePreviewManager : IDisposable
         window.HomeRequested += () => HomeRequested?.Invoke(device.Udid, window.Handle);
         window.FilesDropped += files => FilesDropped?.Invoke(device.Udid, files);
         window.SnapToEdgesEnabled = () => Everyday?.SnapPreviewToEdges != false;
+        window.BeyondScreenEnabled = () => Everyday?.PreviewBeyondScreen != false;
+        window.ResizeModifierPressed = ResizeModifierPressed;
         window.PlacementChanged += placement => SavePlacement(device.Udid, placement);
         if (OverlayActions is { } overlayActions) window.AttachControlsOverlay(device.Udid, overlayActions);
         KeyboardFocusChanged?.Invoke(device.Udid, window.Handle, true);

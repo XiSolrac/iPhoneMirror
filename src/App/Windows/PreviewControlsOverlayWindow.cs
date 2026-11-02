@@ -24,8 +24,8 @@ internal interface IPreviewOverlayActions
 
 /// <summary>
 /// Transparent window over a native preview: a dot on the edge to move the
-/// window (borderless previews only; a frame moves the window itself), a dot
-/// to resize it. Both dots sit where the preview settings put them.
+/// window, a dot to resize it. Both dots sit where the preview settings put
+/// them, pulled onto the screen when the preview hangs past its edge.
 /// Everything but those controls lets
 /// clicks through to the preview, so touch control keeps working.
 /// </summary>
@@ -43,6 +43,7 @@ internal sealed class PreviewControlsOverlayWindow : Window
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpNoOwnerZOrder = 0x0200;
+    private const uint MonitorDefaultToNearest = 2;
     // The dot's centre sits this far from the preview's edge, so the dot
     // touches the edge; its press area is a square around it.
     private const double DotEdgeInset = 7;
@@ -197,8 +198,10 @@ internal sealed class PreviewControlsOverlayWindow : Window
     {
         if (_sizeMoving || !UpdateBounds()) return;
         var state = _actions.GetOverlayState(_udid, _owner);
-        if (GetCursorPos(out var cursor) && cursor.X >= _applied.Left && cursor.X < _applied.Right &&
-            cursor.Y >= _applied.Top && cursor.Y < _applied.Bottom)
+        // The whole preview counts, frame included, not just the phone's screen.
+        if (GetCursorPos(out var cursor) && GetWindowRect(_owner, out var outer) &&
+            cursor.X >= outer.Left && cursor.X < outer.Right &&
+            cursor.Y >= outer.Top && cursor.Y < outer.Bottom)
             _lastInside = DateTime.UtcNow;
         var hovered = DateTime.UtcNow - _lastInside < HoverLinger;
         var controlsVisible = hovered || !state.ControlsOnHoverOnly;
@@ -206,19 +209,38 @@ internal sealed class PreviewControlsOverlayWindow : Window
 
         _state = state;
         PlaceDots();
-        // A frame moves the window itself; only a borderless preview needs the dot.
-        SetShown(_moveDot.Root, controlsVisible && _contentInset().IsEmpty, controlsOpacity);
+        SetShown(_moveDot.Root, controlsVisible, controlsOpacity);
         SetShown(_resizeDot.Root, controlsVisible, controlsOpacity);
-
     }
 
     private void PlaceDots()
     {
         if (_state is not { } state) return;
+        var visible = VisibleArea();
         _moveDot.Place(PreviewDotPositions.Fractions(state.MoveDot, state.MoveDotX, state.MoveDotY),
-            ActualWidth, ActualHeight, resize: false);
+            ActualWidth, ActualHeight, visible, resize: false);
         _resizeDot.Place(PreviewDotPositions.Fractions(state.ResizeDot, state.ResizeDotX, state.ResizeDotY),
-            ActualWidth, ActualHeight, resize: true);
+            ActualWidth, ActualHeight, visible, resize: true);
+    }
+
+    // The part of this window on its screen's work area, in local DIPs. A
+    // preview hanging past an edge keeps its dots there, where they can be reached.
+    private (double Left, double Top, double Right, double Bottom) VisibleArea()
+    {
+        var whole = (0.0, 0.0, ActualWidth, ActualHeight);
+        var physicalWidth = _applied.Right - _applied.Left;
+        var physicalHeight = _applied.Bottom - _applied.Top;
+        if (physicalWidth <= 0 || physicalHeight <= 0 || ActualWidth <= 0 || ActualHeight <= 0) return whole;
+        var monitor = MonitorFromWindow(_owner, MonitorDefaultToNearest);
+        var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
+        if (monitor == 0 || !GetMonitorInfoW(monitor, ref info)) return whole;
+        var scaleX = ActualWidth / physicalWidth;
+        var scaleY = ActualHeight / physicalHeight;
+        var left = Math.Clamp((info.WorkArea.Left - _applied.Left) * scaleX, 0, ActualWidth);
+        var top = Math.Clamp((info.WorkArea.Top - _applied.Top) * scaleY, 0, ActualHeight);
+        var right = Math.Clamp((info.WorkArea.Right - _applied.Left) * scaleX, 0, ActualWidth);
+        var bottom = Math.Clamp((info.WorkArea.Bottom - _applied.Top) * scaleY, 0, ActualHeight);
+        return right - left < DotHitSize || bottom - top < DotHitSize ? whole : (left, top, right, bottom);
     }
 
     private static void SetShown(FrameworkElement element, bool shown, double opacity)
@@ -271,7 +293,8 @@ internal sealed class PreviewControlsOverlayWindow : Window
     private sealed class Dot
     {
         private readonly Ellipse _circle;
-        private (double X, double Y, double Width, double Height) _placed = (double.NaN, 0, 0, 0);
+        private ((double X, double Y) Spot, double Width, double Height,
+            (double Left, double Top, double Right, double Bottom) Visible) _placed = ((double.NaN, 0), 0, 0, default);
 
         internal Dot(Cursor cursor, string toolTipKey)
         {
@@ -295,15 +318,21 @@ internal sealed class PreviewControlsOverlayWindow : Window
         internal int HitTest { get; private set; } = HtCaption;
 
         // Places the circle at the spot (fractions of the preview, its centre
-        // DotEdgeInset in from the edges) and keeps the press area inside.
-        internal void Place((double X, double Y) spot, double width, double height, bool resize)
+        // DotEdgeInset in from the edges), pulls it into the visible part and
+        // keeps the press area inside that part.
+        internal void Place((double X, double Y) spot, double width, double height,
+            (double Left, double Top, double Right, double Bottom) visible, bool resize)
         {
-            if (_placed == (spot.X, spot.Y, width, height)) return;
-            _placed = (spot.X, spot.Y, width, height);
-            var centreX = DotEdgeInset + spot.X * Math.Max(0, width - 2 * DotEdgeInset);
-            var centreY = DotEdgeInset + spot.Y * Math.Max(0, height - 2 * DotEdgeInset);
-            var left = Math.Clamp(centreX - DotHitSize / 2, 0, Math.Max(0, width - DotHitSize));
-            var top = Math.Clamp(centreY - DotHitSize / 2, 0, Math.Max(0, height - DotHitSize));
+            if (_placed == (spot, width, height, visible)) return;
+            _placed = (spot, width, height, visible);
+            var centreX = Math.Clamp(DotEdgeInset + spot.X * Math.Max(0, width - 2 * DotEdgeInset),
+                visible.Left + DotEdgeInset, Math.Max(visible.Left + DotEdgeInset, visible.Right - DotEdgeInset));
+            var centreY = Math.Clamp(DotEdgeInset + spot.Y * Math.Max(0, height - 2 * DotEdgeInset),
+                visible.Top + DotEdgeInset, Math.Max(visible.Top + DotEdgeInset, visible.Bottom - DotEdgeInset));
+            var left = Math.Clamp(centreX - DotHitSize / 2, visible.Left,
+                Math.Max(visible.Left, visible.Right - DotHitSize));
+            var top = Math.Clamp(centreY - DotHitSize / 2, visible.Top,
+                Math.Max(visible.Top, visible.Bottom - DotHitSize));
             Root.Margin = new Thickness(left, top, 0, 0);
             _circle.Margin = new Thickness(centreX - left - DotSize / 2, centreY - top - DotSize / 2, 0, 0);
             if (!resize) return;
@@ -335,6 +364,15 @@ internal sealed class PreviewControlsOverlayWindow : Window
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        internal uint Size;
+        internal WindowRect Monitor;
+        internal WindowRect WorkArea;
+        internal uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct CursorPoint
     {
         internal int X;
@@ -348,6 +386,13 @@ internal sealed class PreviewControlsOverlayWindow : Window
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetCursorPos(out CursorPoint point);
+
+    [DllImport("user32.dll")]
+    private static extern nint MonitorFromWindow(nint window, uint flags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfoW(nint monitor, ref MonitorInfo info);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

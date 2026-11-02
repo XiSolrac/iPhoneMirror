@@ -1630,7 +1630,8 @@
     <system:String x:Key="PreviewControlsTitle">预览上的控件</system:String>
     <system:String x:Key="PreviewControlsOnHover">仅在指针位于预览上时显示圆点和工具栏</system:String>
     <system:String x:Key="PreviewSnapToEdges">吸附到屏幕边缘和角落</system:String>
-    <system:String x:Key="PreviewControlsHelp">移动圆点（仅无边框时显示；有保护壳时拖动边框）：移动窗口。缩放圆点：从最近的角或边拖动以调整大小。Ctrl+Alt+方向键将预览移到角落。</system:String>
+    <system:String x:Key="PreviewBeyondScreen">允许预览超出屏幕边缘</system:String>
+    <system:String x:Key="PreviewControlsHelp">移动圆点：移动窗口。缩放圆点：从最近的角或边拖动以调整大小。Alt+滚轮以指针为中心缩放预览。Ctrl+Alt+方向键将预览移到角落。</system:String>
     <system:String x:Key="PreviewMoveDotPosition">移动圆点</system:String>
     <system:String x:Key="PreviewResizeDotPosition">缩放圆点</system:String>
     <system:String x:Key="PreviewDotPickerHelp">点击或拖动，可将圆点放在任意位置</system:String>

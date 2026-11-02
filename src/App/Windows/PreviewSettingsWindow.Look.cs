@@ -57,6 +57,7 @@ public partial class PreviewSettingsWindow
         var everyday = (Application.Current as App)?.UpdateSettings.Everyday ?? new();
         HoverOnlyCheckBox.IsChecked = everyday.PreviewControlsOnHoverOnly;
         SnapCheckBox.IsChecked = everyday.SnapPreviewToEdges;
+        BeyondScreenCheckBox.IsChecked = everyday.PreviewBeyondScreen;
         SyncDots(everyday);
     }
 
@@ -90,6 +91,7 @@ public partial class PreviewSettingsWindow
         var everyday = app.UpdateSettings.Everyday;
         everyday.PreviewControlsOnHoverOnly = HoverOnlyCheckBox.IsChecked == true;
         everyday.SnapPreviewToEdges = SnapCheckBox.IsChecked == true;
+        everyday.PreviewBeyondScreen = BeyondScreenCheckBox.IsChecked == true;
         app.SaveUpdateSettings();
     }
 }

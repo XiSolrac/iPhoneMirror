@@ -38,6 +38,12 @@ internal sealed partial class NativePreviewWindow
     /// <summary>Whether a finished move snaps to nearby screen edges.</summary>
     internal Func<bool>? SnapToEdgesEnabled { get; set; }
 
+    /// <summary>Whether the window may grow past its screen and hang over an edge.</summary>
+    internal Func<bool>? BeyondScreenEnabled { get; set; }
+
+    /// <summary>The owner's view of whether Alt is held, for Alt+wheel resizing.</summary>
+    internal Func<bool>? ResizeModifierPressed { get; set; }
+
     // Runs while the window is still hidden, so the first visible bounds are
     // the remembered ones. A monitor that is gone falls back to the default.
     private bool ApplyInitialPlacement()
@@ -100,6 +106,7 @@ internal sealed partial class NativePreviewWindow
         var scale = Math.Max(96u, GetDpiForWindow(_handle)) / 96.0;
         var snap = (int)Math.Round(SnapDistanceDips * scale);
         var margin = (int)Math.Round(SnapMarginDips * scale);
+        var mayOverhang = onlyWhenNear && BeyondScreenEnabled?.Invoke() == true;
         int Axis(int start, int size, int min, int max, int side)
         {
             var low = min + margin;
@@ -108,6 +115,8 @@ internal sealed partial class NativePreviewWindow
             if (side < 0) return low;
             if (side > 0) return high;
             if (!onlyWhenNear) return Math.Abs(start - low) <= Math.Abs(start - high) ? low : high;
+            // Left hanging past an edge on purpose: only snap from inside.
+            if (mayOverhang && (start < min || start + size > max)) return start;
             if (start - min <= snap + margin) return low;
             if (max - (start + size) <= snap + margin) return high;
             return start;
