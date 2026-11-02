@@ -257,7 +257,9 @@ internal sealed class PreviewControlsOverlayWindow : Window
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
-        _source = (HwndSource?)PresentationSource.FromVisual(this);
+        // EnsureHandle raises this before the content is attached to the
+        // source, so PresentationSource.FromVisual would still be null here.
+        _source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
         if (_source is null) return;
         var style = GetWindowLongPtrW(_source.Handle, GwlExStyle).ToInt64();
         _ = SetWindowLongPtrW(_source.Handle, GwlExStyle, (nint)(style | WsExNoActivate | WsExToolWindow));
