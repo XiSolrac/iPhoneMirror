@@ -183,14 +183,20 @@ internal sealed class PreviewControlsOverlayWindow : Window
             if (IsVisible) Hide();
             return false;
         }
-        if (!sameSize || rect.Left != _applied.Left || rect.Top != _applied.Top)
-        {
-            var flags = SwpNoZOrder | SwpNoOwnerZOrder | SwpNoActivate | (sameSize ? SwpNoSize : 0);
-            if (SetWindowPos(_source.Handle, 0, rect.Left, rect.Top,
-                rect.Right - rect.Left, rect.Bottom - rect.Top, flags))
-                _applied = rect;
-        }
+        // Showing puts a WPF window back on its own stored bounds, so show
+        // first and compare with where this window really is, not with the
+        // last bounds it was given.
         if (!IsVisible) Show();
+        if (!GetWindowRect(_source.Handle, out var actual)) actual = default;
+        var actualSameSize = rect.Right - rect.Left == actual.Right - actual.Left &&
+            rect.Bottom - rect.Top == actual.Bottom - actual.Top;
+        if (!actualSameSize || rect.Left != actual.Left || rect.Top != actual.Top)
+        {
+            var flags = SwpNoZOrder | SwpNoOwnerZOrder | SwpNoActivate | (actualSameSize ? SwpNoSize : 0);
+            _ = SetWindowPos(_source.Handle, 0, rect.Left, rect.Top,
+                rect.Right - rect.Left, rect.Bottom - rect.Top, flags);
+        }
+        _applied = rect;
         return true;
     }
 
