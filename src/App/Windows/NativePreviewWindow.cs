@@ -798,6 +798,11 @@ internal sealed partial class NativePreviewWindow : IDisposable
         ref bool handled)
     {
         if (message is WmEnterSizeMove or WmExitSizeMove or WmWindowPosChanged) ObservePlacementMessage(message);
+        if (message == WmMoving && FollowPointerWhileMoving(lParam))
+        {
+            handled = true;
+            return 1;
+        }
         if (message == WmDropFiles)
         {
             var files = ReadDroppedFiles(wParam);

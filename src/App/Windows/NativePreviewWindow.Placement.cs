@@ -13,6 +13,7 @@ internal sealed partial class NativePreviewWindow
     private const double SnapDistanceDips = 24;
     private const double SnapMarginDips = 12;
     private const int WmWindowPosChanged = 0x0047;
+    private const int WmMoving = 0x0216;
     private PreviewPlacement? _initialPlacement;
     private PreviewControlsOverlayWindow? _controlsOverlay;
 
@@ -31,6 +32,9 @@ internal sealed partial class NativePreviewWindow
     }
     private WindowRect _sizeMoveStart;
     private bool _sizeMoveActive;
+    // Where the pointer grabbed the window, to follow it past the top edge.
+    private HoverPoint _sizeMoveCursor;
+    private bool _sizeMoveCursorKnown;
 
     /// <summary>Raised after a move or resize, a pin change and before the window closes.</summary>
     internal event Action<PreviewPlacement>? PlacementChanged;
@@ -69,6 +73,7 @@ internal sealed partial class NativePreviewWindow
         if (message == WmEnterSizeMove)
         {
             _sizeMoveActive = GetWindowRect(_handle, out _sizeMoveStart);
+            _sizeMoveCursorKnown = GetCursorPos(out _sizeMoveCursor);
             _controlsOverlay?.SizeMoveChanged(true);
             return;
         }
@@ -80,8 +85,27 @@ internal sealed partial class NativePreviewWindow
             end.Bottom - end.Top == _sizeMoveStart.Bottom - _sizeMoveStart.Top)
             SnapToWorkArea(end, 0, 0, onlyWhenNear: true);
         _sizeMoveActive = false;
+        _sizeMoveCursorKnown = false;
         _controlsOverlay?.SizeMoveChanged(false);
         PublishPlacement();
+    }
+
+    // Windows stops a moved window at the top of the screen so its caption
+    // stays reachable. A preview that may hang past the edges follows the
+    // pointer instead; the grabbed spot stays under it, so it stays reachable too.
+    private bool FollowPointerWhileMoving(nint lParam)
+    {
+        if (!_sizeMoveActive || !_sizeMoveCursorKnown || lParam == 0 ||
+            BeyondScreenEnabled?.Invoke() != true || !GetCursorPos(out var cursor)) return false;
+        var rect = Marshal.PtrToStructure<WindowRect>(lParam);
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        rect.Left = _sizeMoveStart.Left + cursor.X - _sizeMoveCursor.X;
+        rect.Top = _sizeMoveStart.Top + cursor.Y - _sizeMoveCursor.Y;
+        rect.Right = rect.Left + width;
+        rect.Bottom = rect.Top + height;
+        Marshal.StructureToPtr(rect, lParam, false);
+        return true;
     }
 
     /// <summary>
