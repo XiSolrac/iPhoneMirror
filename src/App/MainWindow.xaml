@@ -1041,8 +1041,10 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Grid x:Name="HeaderPanel" Grid.Row="0"
-              MouseLeftButtonDown="OnHeaderMouseLeftButtonDown">
+        <Border x:Name="HeaderPanel" Grid.Row="0" Background="Transparent"
+                Margin="-12,-18,-18,0" Padding="12,18,18,0"
+                MouseLeftButtonDown="OnHeaderMouseLeftButtonDown">
+        <Grid>
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -1203,6 +1205,8 @@
                 </Button>
             </StackPanel>
         </Grid>
+
+        </Border>
 
         <Grid x:Name="MainContentGrid" Grid.Row="2" UseLayoutRounding="True" SizeChanged="OnWorkspaceLayoutChanged" Loaded="OnWorkspaceLayoutChanged">
             <Grid.ColumnDefinitions>
