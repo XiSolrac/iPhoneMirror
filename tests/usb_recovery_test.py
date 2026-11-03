@@ -764,6 +764,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_stalled_developer_preflight_consumes_bounded_recovery_attempts(self):
         s = self.session()
+        s._start_capture_mux = AsyncMock()  # Keep host USB discovery outside the simulated timeout.
         old = type('Lockdown', (), {'udid': 'test-device'})()
         fresh = type('Lockdown', (), {'udid': 'test-device', 'close': AsyncMock()})()
         s._create_lockdown_with_retry = AsyncMock(return_value=fresh)

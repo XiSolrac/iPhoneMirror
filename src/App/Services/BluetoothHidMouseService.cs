@@ -803,13 +803,8 @@ internal sealed class BluetoothHidMouseService : IAsyncDisposable
             var connected = await DeviceInformation.FindAllAsync(
                 BluetoothLEDevice.GetDeviceSelectorFromConnectionStatus(
                     BluetoothConnectionStatus.Connected));
-            var hidConnected = new List<string>();
-            foreach (var device in connected)
-            {
-                if (await IsHidDeviceAsync(device.Id).ConfigureAwait(false))
-                    hidConnected.Add(device.Id);
-            }
-            clientIds = clientIds.Concat(hidConnected)
+            // The PC hosts HID; an iPhone acting as its GATT client need not expose HID itself.
+            clientIds = clientIds.Concat(connected.Select(device => device.Id))
                 .Where(id => !string.IsNullOrWhiteSpace(id))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -836,19 +831,6 @@ internal sealed class BluetoothHidMouseService : IAsyncDisposable
                     ? connectedAt : DateTimeOffset.Now));
         }
         return clients;
-    }
-
-    private static async Task<bool> IsHidDeviceAsync(string deviceId)
-    {
-        try
-        {
-            using var device = await BluetoothLEDevice.FromIdAsync(deviceId);
-            if (device is null) return false;
-            var result = await device.GetGattServicesForUuidAsync(HidServiceUuid,
-                BluetoothCacheMode.Uncached);
-            return result.Status == GattCommunicationStatus.Success && result.Services.Count > 0;
-        }
-        catch { return false; }
     }
 
     internal async Task<bool> BindTargetClientAsync(string clientId)

@@ -40,10 +40,10 @@ GPL-3.0-only 不会自动改变独立桥接器或第三方代码的许可。
 - 用途: SRP-6a、X25519/Ed25519、ChaCha20Poly1305
 - 来源: https://github.com/pyca/cryptography
 
-## srptools
-- 许可证: MIT
+## srptools 2.0.0
+- 许可证: BSD-3-Clause
 - 用途: SRP-6a 协议
-- 来源: https://github.com/idomir/srptools
+- 来源: https://github.com/idlesign/srptools
 
 ## construct（传递依赖）
 - 许可证: MIT

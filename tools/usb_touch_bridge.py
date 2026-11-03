@@ -57,6 +57,17 @@ from hyperframe.frame import DataFrame, GoAwayFrame, PingFrame, RstStreamFrame
 import pymobiledevice3.remote.tunnel_service as _ts
 _ts.USE_USERSPACE_TUNNEL = True
 
+
+class _RemotePairingSrpClientSession(_ts.SRPClientSession):
+    def verify_proof(self, key_proof, base64=False):
+        # The pinned SDK sends hexadecimal bytes; srptools 2 treats bytes as raw.
+        if isinstance(key_proof, bytes):
+            key_proof = key_proof.decode('ascii')
+        return super().verify_proof(key_proof, base64=base64)
+
+
+_ts.SRPClientSession = _RemotePairingSrpClientSession
+
 from pymobiledevice3 import lockdown as _lockdown
 from pymobiledevice3.common import get_home_folder
 from pymobiledevice3.exceptions import (

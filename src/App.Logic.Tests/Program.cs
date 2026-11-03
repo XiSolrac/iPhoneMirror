@@ -1673,10 +1673,10 @@ Equal(true,
 // WorkspaceRevealTests, rather than requiring a particular animation method name.
 Equal(true,
     mainWindowCode.Contains(
-        "SetWorkspaceSurfaceImmediate(LeftPanelHost, visible: false, width: 300)",
+        "SetWorkspaceSurfaceImmediate(LeftPanelHost, visible: false, width: _leftPanelWidth)",
         StringComparison.Ordinal) &&
     mainWindowCode.Contains(
-        "SetWorkspaceSurfaceImmediate(ControlPanel, visible: false, width: 336)",
+        "SetWorkspaceSurfaceImmediate(ControlPanel, visible: false, width: _settingsPanelWidth)",
         StringComparison.Ordinal),
     "entering full screen cancels pending workspace panel animations");
 var closeMethodIndex = mainWindowCode.IndexOf(
@@ -2135,11 +2135,13 @@ Equal(true,
 Equal(true,
     nativePreviewWindowCode.Contains("private bool _isTopMost;",
         StringComparison.Ordinal) &&
-    nativePreviewWindowCode.Contains("SetWindowPos(_handle, HwndNoTopMost",
+    nativePreviewWindowCode.Contains("_isTopMost = _initialPlacement?.TopMost == true;",
         StringComparison.Ordinal) &&
-    !nativePreviewWindowCode.Contains("_isTopMost = SetWindowPos(_handle, HwndTopMost",
+    nativePreviewWindowCode.Contains("var zOrder = _isTopMost ? HwndTopMost : HwndNoTopMost;",
+        StringComparison.Ordinal) &&
+    nativePreviewWindowCode.Contains("_topMostItem.Click += (_, _) => ToggleTopMost();",
         StringComparison.Ordinal),
-    "independent previews start non-topmost while retaining the manual pin command");
+    "independent previews default to non-topmost, restore saved placement and retain the manual pin command");
 Equal(true,
     true ||
     mainViewModelSource.Contains("private bool _bluetoothControlStopping;",

@@ -11,6 +11,9 @@
 
 <p align="center"><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
 
+> **This fork:** [Windows setup and Bluetooth/Wi-Fi fixes (Deutsch)](README.de.md).
+> Build this checkout to include these fixes; upstream release downloads are separate.
+
 <p align="center">
   <a href="https://github.com/RayrenSX/iPhoneMirror/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/RayrenSX/iPhoneMirror?include_prereleases&sort=semver"></a>
   <a href="https://github.com/RayrenSX/iPhoneMirror/actions/workflows/windows-build.yml"><img alt="Windows build" src="https://github.com/RayrenSX/iPhoneMirror/actions/workflows/windows-build.yml/badge.svg"></a>
